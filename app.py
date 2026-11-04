@@ -14,6 +14,19 @@ def load_master_data():
         df = pd.read_excel("master_mahasiswa.xlsx")
         df.columns = [str(c).strip() for c in df.columns]
         
+        # Mapping nama kolom master jika ada variasi nama
+        rename_master = {}
+        for c in df.columns:
+            c_clean = c.lower().strip()
+            if c_clean in ['nim', 'nomor peserta', 'no peserta']:
+                rename_master[c] = 'NIM'
+            elif c_clean in ['nama', 'nama mahasiswa', 'nama peserta']:
+                rename_master[c] = 'Nama'
+            elif c_clean in ['angkatan']:
+                rename_master[c] = 'Angkatan'
+                
+        df = df.rename(columns=rename_master)
+        
         if 'NIM' in df.columns:
             df['NIM'] = df['NIM'].astype(str).str.strip()
         if 'Angkatan' in df.columns:
@@ -97,11 +110,10 @@ if file_ujian and df_master_all is not None:
         st.error(f"❌ Gagal membaca file ujian yang diunggah. Detail: {e}")
         st.stop()
     
-    # Deteksi Kolom Soal (Semua kolom selain metadata identitas)
+    # Deteksi Kolom Soal
     non_soal_cols = {'NIM', 'Nama', 'Sesi', 'Nomor Peserta', 'Nama Peserta'}
     soal_cols = [c for c in df_raw.columns if c not in non_soal_cols]
     
-    # Pastikan kolom Sesi ada di df_raw (jika tidak ada, buat default Sesi 1)
     if 'Sesi' not in df_raw.columns:
         df_raw['Sesi'] = "1"
     
@@ -126,11 +138,12 @@ if file_ujian and df_master_all is not None:
         for sc in soal_cols:
             df_th[sc] = "TH"
             
-        df_nilai_th = df_th[cols_nilai_order]
+        # Gunakan reindex agar bebas KeyError jika ada kolom hilang
+        df_nilai_th = df_th.reindex(columns=cols_nilai_order).fillna('')
     else:
         df_nilai_th = pd.DataFrame(columns=cols_nilai_order)
             
-    df_nilai_hadir = df_raw[cols_nilai_order]
+    df_nilai_hadir = df_raw.reindex(columns=cols_nilai_order).fillna('')
     
     if not df_th.empty:
         df_nilai_final = pd.concat([df_nilai_hadir, df_nilai_th], ignore_index=True)
