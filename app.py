@@ -94,7 +94,7 @@ if file_ujian and df_master_all is not None:
     
     kunci = 'A'
     
-    # Hitung Nilai
+    # Hitung Nilai Peserta Hadir
     df_raw['Jumlah Benar'] = (df_raw[soal_cols] == kunci).sum(axis=1)
     total_soal = len(soal_cols)
     df_raw['Nilai (100)'] = ((df_raw['Jumlah Benar'] / total_soal) * 100).round(2)
@@ -103,18 +103,24 @@ if file_ujian and df_master_all is not None:
     nim_hadir = set(df_raw['NIM'])
     df_th = df_master[~df_master['NIM'].isin(nim_hadir)].copy()
     
+    # Susun Urutan Kolom Target
+    cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
+    
     if not df_th.empty:
+        # Tambahkan kolom yang diperlukan untuk peserta TH agar tidak KeyError
         df_th['Sesi'] = "TH"
         df_th['Jumlah Benar'] = 0
         df_th['Nilai (100)'] = 0.0
         for sc in soal_cols:
             df_th[sc] = "TH"
             
-    cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
+        df_nilai_th = df_th[cols_nilai_order]
+    else:
+        df_nilai_th = pd.DataFrame(columns=cols_nilai_order)
+            
     df_nilai_hadir = df_raw[cols_nilai_order]
     
     if not df_th.empty:
-        df_nilai_th = df_th[cols_nilai_order]
         df_nilai_final = pd.concat([df_nilai_hadir, df_nilai_th], ignore_index=True)
     else:
         df_nilai_final = df_nilai_hadir.copy()
