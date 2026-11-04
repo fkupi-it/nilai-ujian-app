@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import io
 import datetime
+from openpyxl.styles import PatternFill
 
 st.set_page_config(page_title="Pemroses Nilai & Analisis Ujian", layout="wide")
 
@@ -14,7 +15,6 @@ def load_master_data():
         df = pd.read_excel("master_mahasiswa.xlsx")
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Mapping nama kolom master jika ada variasi nama
         rename_master = {}
         for c in df.columns:
             c_clean = c.lower().strip()
@@ -30,7 +30,7 @@ def load_master_data():
         if 'NIM' in df.columns:
             df['NIM'] = df['NIM'].astype(str).str.strip()
         if 'Angkatan' in df.columns:
-            df['Angkatan'] = df['Angkatan'].astype(str).str.strip()
+            df['Angkatan'] = df['Angkatan'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             
         return df
     except FileNotFoundError:
@@ -84,7 +84,6 @@ if file_ujian and df_master_all is not None:
         df_raw = pd.read_excel(file_ujian)
         df_raw.columns = [str(c).strip() for c in df_raw.columns]
         
-        # Mapping nama kolom fleksibel
         rename_dict = {}
         for col in df_raw.columns:
             col_clean = col.lower().replace('_', ' ').replace('-', ' ').strip()
@@ -101,7 +100,6 @@ if file_ujian and df_master_all is not None:
             
         df_raw['NIM'] = df_raw['NIM'].astype(str).str.strip()
         
-        # Jika kolom Nama tidak ada di file ujian, mapping Nama dari df_master
         if 'Nama' not in df_raw.columns and 'Nama' in df_master.columns:
             map_nama = dict(zip(df_master['NIM'], df_master['Nama']))
             df_raw['Nama'] = df_raw['NIM'].map(map_nama).fillna('')
@@ -128,7 +126,6 @@ if file_ujian and df_master_all is not None:
     nim_hadir = set(df_raw['NIM'])
     df_th = df_master[~df_master['NIM'].isin(nim_hadir)].copy()
     
-    # Susun Urutan Kolom Target
     cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
     
     if not df_th.empty:
@@ -138,7 +135,6 @@ if file_ujian and df_master_all is not None:
         for sc in soal_cols:
             df_th[sc] = "TH"
             
-        # Gunakan reindex agar bebas KeyError jika ada kolom hilang
         df_nilai_th = df_th.reindex(columns=cols_nilai_order).fillna('')
     else:
         df_nilai_th = pd.DataFrame(columns=cols_nilai_order)
@@ -215,7 +211,7 @@ if file_ujian and df_master_all is not None:
             ["Nama Mata Kuliah:", nama_matkul],
             ["Jenis Ujian:", jenis_ujian],
             ["Versi Soal:", versi_soal],
-            ["Angkatan:", selected_angkatan],
+            ["Angkatan:", str(selected_angkatan)],
             ["Tanggal Ujian:", str(tgl_ujian)],
             ["Jumlah Soal:", total_soal],
             ["Peserta Hadir / TH:", f"{peserta_hadir} / {peserta_th}"]
@@ -223,6 +219,72 @@ if file_ujian and df_master_all is not None:
         df_metadata.to_excel(writer, sheet_name='Analysis', index=False, header=False, startrow=0)
         df_analysis_table.to_excel(writer, sheet_name='Analysis', index=False, startrow=8)
         
+        wb = writer.book
+        
+        # --- 1. Formatting Sheet Nilai ---
+        ws_nilai = wb['Nilai']
+        ws_nilai.column_dimensions['A'].width = 15  # Sesi
+        ws_nilai.column_dimensions['B'].width = 15  # NIM
+        ws_nilai.column_dimensions['C'].width = 40  # Nama (Diperlebar agar tampil utuh)
+        ws_nilai.column_dimensions['D'].width = 16  # Jumlah Benar
+        ws_nilai.column_dimensions['E'].width = 16  # Nilai (100)
+        
+        # Format angka 2 desimal di Nilai (100)
+        for r in range(2, len(df_nilai_final) + 2):
+            ws_nilai.cell(row=r, column=5).number_format = '0.00'
+            
+        # Atur lebar kolom Q1 s.d Qn
+        for col_idx in range(6, 6 + len(soal_cols)):
+            col_letter = openpyxl.utils.get_column_letter(col_idx) if hasattr(openpyxl, 'utils') else ws_nilai.cell(row=1, column=col_idx).column_letter
+            ws_nilai.column_dimensions[col_letter].width = 8
+        
+        # --- 2. Formatting Sheet Analysis ---
+        ws_analysis = wb['Analysis']
+        
+        col_widths_analysis = {
+            'A': 10, 'B': 15, 'C': 22, 'D': 16, 'E': 22, 'F': 20, 'G': 26,
+            'H': 8, 'I': 8, 'J': 8, 'K': 8, 'L': 8
+        }
+        for col_letter, width in col_widths_analysis.items():
+            ws_analysis.column_dimensions[col_letter].width = width
+            
+        fill_purple = PatternFill(start_color="A7A6F6", end_color="A7A6F6", fill_type="solid")
+        fill_blue   = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+        fill_green  = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+        fill_yellow = PatternFill(start_color="FFFACD", end_color="FFFACD", fill_type="solid")
+        fill_pink   = PatternFill(start_color="FFC0CB", end_color="FFC0CB", fill_type="solid")
+        
+        start_row_data = 10
+        end_row_data = start_row_data + len(df_analysis_table) - 1
+        
+        for r in range(start_row_data, end_row_data + 1):
+            for col_idx in [2, 3, 4, 6, 8, 9, 10, 11, 12]:
+                cell = ws_analysis.cell(row=r, column=col_idx)
+                cell.number_format = '0.00'
+            
+            cell_diff = ws_analysis.cell(row=r, column=5)
+            val_diff = str(cell_diff.value)
+            if val_diff == "Very Easy": cell_diff.fill = fill_purple
+            elif val_diff == "Easy": cell_diff.fill = fill_blue
+            elif val_diff == "Moderate": cell_diff.fill = fill_green
+            elif val_diff == "Difficult": cell_diff.fill = fill_yellow
+            elif val_diff == "Very Difficult": cell_diff.fill = fill_pink
+            
+            cell_disc = ws_analysis.cell(row=r, column=7)
+            val_disc = str(cell_disc.value)
+            if val_disc == "Very good item": cell_disc.fill = fill_green
+            elif val_disc == "To be revised": cell_disc.fill = fill_yellow
+            elif val_disc == "To be discarded": cell_disc.fill = fill_pink
+            
+            for c_opt in range(8, 13):
+                cell_opt = ws_analysis.cell(row=r, column=c_opt)
+                try:
+                    val_opt = float(cell_opt.value)
+                    if val_opt < 0.05:
+                        cell_opt.fill = fill_pink
+                except (ValueError, TypeError):
+                    pass
+
     output_buffer.seek(0)
     
     filename_download = f"Hasil_{nama_matkul}_{jenis_ujian}_{selected_angkatan}_V{versi_soal}_{tgl_ujian}.xlsx"
