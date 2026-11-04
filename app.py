@@ -8,11 +8,10 @@ st.set_page_config(page_title="Pemroses Nilai & Analisis Ujian", layout="wide")
 
 st.title("📊 Pemroses Nilai & Analisis Ujian FK UPI")
 
-# 1. Load Master Data Mahasiswa (Tanpa Cache agar tidak stuck)
+# 1. Load Master Data Mahasiswa
 def load_master_data():
     try:
         df = pd.read_excel("master_mahasiswa.xlsx")
-        # Rapikan nama kolom (hilangkan spasi tak sengaja)
         df.columns = [str(c).strip() for c in df.columns]
         
         if 'NIM' in df.columns:
@@ -22,7 +21,7 @@ def load_master_data():
             
         return df
     except FileNotFoundError:
-        st.error("❌ File 'master_mahasiswa.xlsx' tidak ditemukan di repository GitHub! Pastikan file berada di folder utama (root).")
+        st.error("❌ File 'master_mahasiswa.xlsx' tidak ditemukan di repository GitHub!")
         return None
     except Exception as e:
         st.error(f"❌ Gagal membaca 'master_mahasiswa.xlsx'. Detail Error: {e}")
@@ -45,7 +44,6 @@ with col2:
 with col3:
     if df_master_all is not None and 'Angkatan' in df_master_all.columns:
         list_angkatan = sorted(list(df_master_all['Angkatan'].dropna().unique()))
-        # Tentukan index default untuk 2023 jika ada dalam daftar
         default_index = list_angkatan.index("2023") if "2023" in list_angkatan else 0
         selected_angkatan = st.selectbox("Pilih Angkatan", list_angkatan, index=default_index)
     else:
@@ -57,7 +55,6 @@ st.divider()
 st.subheader("2. Unggah File Ujian")
 file_ujian = st.file_uploader("Upload File Hasil Ujian (.xlsx)", type=["xlsx"])
 
-# Jalankan kalkulasi hanya jika file master ada & file ujian sudah di-upload
 if file_ujian and df_master_all is not None:
     # Filter Master Berdasarkan Angkatan
     if 'Angkatan' in df_master_all.columns:
@@ -69,15 +66,29 @@ if file_ujian and df_master_all is not None:
         st.warning(f"⚠️ Tidak ada data mahasiswa angkatan {selected_angkatan} di dalam file master_mahasiswa.xlsx!")
         st.stop()
 
-    # Read Excel Ujian
+    # Read Excel Ujian & Standardisasi Header Kolom
     try:
         df_raw = pd.read_excel(file_ujian)
+        df_raw.columns = [str(c).strip() for c in df_raw.columns]
+        
+        # Mapping nama kolom jika menggunakan format baru (Nomor Peserta & Nama Peserta)
+        rename_dict = {}
+        for col in df_raw.columns:
+            if col.lower() in ['nomor peserta', 'no peserta', 'nim']:
+                rename_dict[col] = 'NIM'
+            elif col.lower() in ['nama peserta', 'nama mahasiswa', 'nama']:
+                rename_dict[col] = 'Nama'
+        
+        df_raw = df_raw.rename(columns=rename_dict)
         df_raw['NIM'] = df_raw['NIM'].astype(str).str.strip()
+    except KeyError as ke:
+        st.error(f"❌ Kolom {ke} tidak ditemukan pada file ujian yang diunggah. Pastikan terdapat kolom 'Nomor Peserta' / 'NIM'.")
+        st.stop()
     except Exception as e:
         st.error(f"❌ Gagal membaca file ujian yang diunggah. Detail: {e}")
         st.stop()
     
-    # Deteksi Kolom Soal (Q1 - Qn)
+    # Deteksi Kolom Soal (Semua kolom selain NIM, Nama, Sesi)
     cols_base = ['NIM', 'Nama', 'Sesi']
     soal_cols = [c for c in df_raw.columns if c not in cols_base]
     
