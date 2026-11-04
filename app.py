@@ -4,6 +4,7 @@ import numpy as np
 import io
 import datetime
 from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Pemroses Nilai & Analisis Ujian", layout="wide")
 
@@ -225,7 +226,7 @@ if file_ujian and df_master_all is not None:
         ws_nilai = wb['Nilai']
         ws_nilai.column_dimensions['A'].width = 15  # Sesi
         ws_nilai.column_dimensions['B'].width = 15  # NIM
-        ws_nilai.column_dimensions['C'].width = 40  # Nama (Diperlebar agar tampil utuh)
+        ws_nilai.column_dimensions['C'].width = 40  # Nama (Diperlebar)
         ws_nilai.column_dimensions['D'].width = 16  # Jumlah Benar
         ws_nilai.column_dimensions['E'].width = 16  # Nilai (100)
         
@@ -235,7 +236,7 @@ if file_ujian and df_master_all is not None:
             
         # Atur lebar kolom Q1 s.d Qn
         for col_idx in range(6, 6 + len(soal_cols)):
-            col_letter = openpyxl.utils.get_column_letter(col_idx) if hasattr(openpyxl, 'utils') else ws_nilai.cell(row=1, column=col_idx).column_letter
+            col_letter = get_column_letter(col_idx)
             ws_nilai.column_dimensions[col_letter].width = 8
         
         # --- 2. Formatting Sheet Analysis ---
