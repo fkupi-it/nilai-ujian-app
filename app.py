@@ -71,26 +71,39 @@ if file_ujian and df_master_all is not None:
         df_raw = pd.read_excel(file_ujian)
         df_raw.columns = [str(c).strip() for c in df_raw.columns]
         
-        # Mapping nama kolom jika menggunakan format baru (Nomor Peserta & Nama Peserta)
+        # Mapping nama kolom fleksibel
         rename_dict = {}
         for col in df_raw.columns:
-            if col.lower() in ['nomor peserta', 'no peserta', 'nim']:
+            col_clean = col.lower().replace('_', ' ').replace('-', ' ').strip()
+            if col_clean in ['nomor peserta', 'no peserta', 'nim', 'no. peserta']:
                 rename_dict[col] = 'NIM'
-            elif col.lower() in ['nama peserta', 'nama mahasiswa', 'nama']:
+            elif col_clean in ['nama peserta', 'nama mahasiswa', 'nama', 'full name']:
                 rename_dict[col] = 'Nama'
         
         df_raw = df_raw.rename(columns=rename_dict)
+        
+        if 'NIM' not in df_raw.columns:
+            st.error("❌ Kolom 'Nomor Peserta' atau 'NIM' tidak ditemukan di file ujian.")
+            st.stop()
+            
         df_raw['NIM'] = df_raw['NIM'].astype(str).str.strip()
-    except KeyError as ke:
-        st.error(f"❌ Kolom {ke} tidak ditemukan pada file ujian yang diunggah. Pastikan terdapat kolom 'Nomor Peserta' / 'NIM'.")
-        st.stop()
+        
+        # Jika kolom Nama tidak ada di file ujian, mapping Nama dari df_master
+        if 'Nama' not in df_raw.columns and 'Nama' in df_master.columns:
+            map_nama = dict(zip(df_master['NIM'], df_master['Nama']))
+            df_raw['Nama'] = df_raw['NIM'].map(map_nama).fillna('')
+
     except Exception as e:
         st.error(f"❌ Gagal membaca file ujian yang diunggah. Detail: {e}")
         st.stop()
     
-    # Deteksi Kolom Soal (Semua kolom selain NIM, Nama, Sesi)
-    cols_base = ['NIM', 'Nama', 'Sesi']
-    soal_cols = [c for c in df_raw.columns if c not in cols_base]
+    # Deteksi Kolom Soal (Semua kolom selain metadata identitas)
+    non_soal_cols = {'NIM', 'Nama', 'Sesi', 'Nomor Peserta', 'Nama Peserta'}
+    soal_cols = [c for c in df_raw.columns if c not in non_soal_cols]
+    
+    # Pastikan kolom Sesi ada di df_raw (jika tidak ada, buat default Sesi 1)
+    if 'Sesi' not in df_raw.columns:
+        df_raw['Sesi'] = "1"
     
     kunci = 'A'
     
@@ -107,7 +120,6 @@ if file_ujian and df_master_all is not None:
     cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
     
     if not df_th.empty:
-        # Tambahkan kolom yang diperlukan untuk peserta TH agar tidak KeyError
         df_th['Sesi'] = "TH"
         df_th['Jumlah Benar'] = 0
         df_th['Nilai (100)'] = 0.0
