@@ -323,7 +323,7 @@ if menu_option == "📊 Olah Nilai":
         )
 
 # ==============================================================================
-# MENU 2: GENERATE SOAL (PEMBACAAN POSISI KOLOM / INDEKS)
+# MENU 2: GENERATE SOAL (PEMBACAAN POSISI KOLOM & SHARED STRINGS ENABLED)
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
@@ -360,7 +360,6 @@ elif menu_option == "⚡ Generate Soal":
     
     if file_soal:
         try:
-            # Read sheet pertama tanpa membedakan header
             df_soal = pd.read_excel(file_soal, sheet_name=0)
             
             if df_soal.empty:
@@ -370,7 +369,6 @@ elif menu_option == "⚡ Generate Soal":
             output_rows = []
             
             for idx, row in df_soal.iterrows():
-                # Helper ambil isi sel berdasarkan indeks posisi kolom (0-8)
                 def get_by_idx(col_idx):
                     if col_idx < len(row):
                         val = row.iloc[col_idx]
@@ -378,35 +376,31 @@ elif menu_option == "⚡ Generate Soal":
                             return str(val).strip()
                     return ""
 
-                # Posisi Kolom
-                no_soal_raw = get_by_idx(0) # Kolom 1 (Indeks 0)
+                no_soal_raw = get_by_idx(0)
                 if not no_soal_raw:
                     no_soal_raw = str(idx + 1)
                 if no_soal_raw.endswith('.0'):
                     no_soal_raw = no_soal_raw[:-2]
                     
-                raw_vignette = get_by_idx(1) # Kolom 2 (Indeks 1)
-                pertanyaan   = get_by_idx(2) # Kolom 3 (Indeks 2)
-                media        = get_by_idx(3).lower() # Kolom 4 (Indeks 3)
+                raw_vignette = get_by_idx(1)
+                pertanyaan   = get_by_idx(2)
+                media        = get_by_idx(3).lower()
                 
-                opsi_benar  = get_by_idx(4) # Kolom 5 (Indeks 4)
-                opsi_salah1 = get_by_idx(5) # Kolom 6 (Indeks 5)
-                opsi_salah2 = get_by_idx(6) # Kolom 7 (Indeks 6)
-                opsi_salah3 = get_by_idx(7) # Kolom 8 (Indeks 7)
-                opsi_salah4 = get_by_idx(8) # Kolom 9 (Indeks 8)
+                opsi_benar  = get_by_idx(4)
+                opsi_salah1 = get_by_idx(5)
+                opsi_salah2 = get_by_idx(6)
+                opsi_salah3 = get_by_idx(7)
+                opsi_salah4 = get_by_idx(8)
                 
-                # Abaikan jika baris kosong sepenuhnya
                 if not no_soal_raw and not raw_vignette and not pertanyaan:
                     continue
                     
                 no_soal_formatted = no_soal_raw.zfill(3)
                 
-                # Formulasi ID Soal Base & Unik (YYMMDD)
                 id_base = f"{matkul_gen}-{kode_gen}-{tgl_gen_yymmdd}{versi_gen}{no_soal_formatted}"
                 random_two_digits = str(random.randint(10, 99))
                 id_soal_lengkap = f"{id_base}{random_two_digits}"
                 
-                # Format Badan Soal (HTML)
                 vignette_formatted = f'<span style="font-size: 0.8em; color: #ebebeb;">{id_soal_lengkap}</span><br>{raw_vignette}'
                 
                 if 'gambar' in media:
@@ -415,10 +409,10 @@ elif menu_option == "⚡ Generate Soal":
                     vignette_formatted += f'<br><br><video controls="controls" width="300" height="150"><source src="https://fkupi-it.github.io/mediacbt/{id_base}.mp3" type="audio/mpeg"></video>'
                     
                 out_row = [
-                    0, 1, 0, "", 0, "", "", "", "", "", "", "", "", "", "",
+                    0.0, 1.0, 0.0, "", 0.0, "", "", "", "", "", "", "", "", "", "",
                     vignette_formatted,
                     pertanyaan,
-                    1,
+                    1.0,
                     opsi_benar, opsi_salah1, opsi_salah2, opsi_salah3, opsi_salah4
                 ]
                 output_rows.append(out_row)
@@ -453,10 +447,12 @@ elif menu_option == "⚡ Generate Soal":
             
             gen_buffer = io.BytesIO()
             with pd.ExcelWriter(gen_buffer, engine='openpyxl') as writer:
+                # AKTIFKAN SHARED STRINGS AGAR PARSER PHP EXAMTOOLS MEMBACA DENGAN SEMPURNA
+                writer.book.use_shared_strings = True
                 df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
+                
             gen_buffer.seek(0)
             
-            # --- PENYESUAIAN FORMAT NAMA FILE UNDUHAN BARU ---
             combo_tgl_versi_gen = f"{tgl_gen_yymmdd}{versi_gen}"
             filename_gen = f"[ExamTools - Soal] {matkul_gen}_{combo_tgl_versi_gen}_{jenis_gen}.xlsx"
             
