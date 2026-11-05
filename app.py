@@ -3,14 +3,26 @@ import pandas as pd
 import numpy as np
 import io
 import datetime
+import random
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
-st.set_page_config(page_title="Pemroses Nilai & Analisis Ujian", layout="wide")
+st.set_page_config(page_title="Sistem Pengolahan Ujian FK UPI", layout="wide")
 
-st.title("📊 Pemroses Nilai & Analisis Ujian FK UPI")
+# Helper: Format Tanggal ke Bahasa Indonesia (Contoh: 30 Oktober 2026)
+NAMA_BULAN = {
+    1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
+    5: "Mei", 6: "Juni", 7: "Juli", 8: "Agustus",
+    9: "September", 10: "Oktober", 11: "November", 12: "Desember"
+}
 
-# 1. Load Master Data Mahasiswa
+def format_tanggal_indonesia(dt_date):
+    day = dt_date.day
+    month = NAMA_BULAN[dt_date.month]
+    year = dt_date.year
+    return f"{day} {month} {year}"
+
+# 1. Load Master Data Mahasiswa (Global)
 def load_master_data():
     try:
         df = pd.read_excel("master_mahasiswa.xlsx")
@@ -43,258 +55,383 @@ def load_master_data():
 
 df_master_all = load_master_data()
 
-# 2. Form Metadata Ujian
-st.subheader("1. Informasi Ujian")
-col1, col2, col3 = st.columns(3)
+# --- SYSTEM NAVIGATION MENU ---
+st.sidebar.title("📌 Menu Navigasi")
+menu_option = st.sidebar.radio("Pilih Layanan:", ["📊 Olah Nilai", "⚡ Generate Soal"])
 
-with col1:
-    nama_matkul = st.text_input("Nama Matkul (Kode/Singkatan)", value="FBS1").strip().upper()
-    jenis_ujian = st.text_input("Jenis Ujian", value="Post Test").strip()
+# ==============================================================================
+# MENU 1: OLAH NILAI
+# ==============================================================================
+if menu_option == "📊 Olah Nilai":
+    st.title("📊 Pemroses Nilai & Analisis Ujian FK UPI")
+    
+    st.subheader("1. Informasi Ujian")
+    col1, col2, col3 = st.columns(3)
 
-with col2:
-    versi_soal = st.text_input("Versi Soal", value="1").strip()
-    tgl_ujian = st.date_input("Tanggal Ujian", value=datetime.date.today())
+    with col1:
+        nama_matkul = st.text_input("Nama Matkul (Kode/Singkatan)", value="FBS1").strip().upper()
+        jenis_ujian = st.text_input("Jenis Ujian", value="Post Test").strip()
 
-with col3:
-    if df_master_all is not None and 'Angkatan' in df_master_all.columns:
-        list_angkatan = sorted(list(df_master_all['Angkatan'].dropna().unique()))
-        default_index = list_angkatan.index("2023") if "2023" in list_angkatan else 0
-        selected_angkatan = st.selectbox("Pilih Angkatan", list_angkatan, index=default_index)
-    else:
-        selected_angkatan = st.text_input("Angkatan", value="2023").strip()
+    with col2:
+        versi_soal = st.text_input("Versi Soal", value="1").strip()
+        tgl_ujian = st.date_input("Tanggal Ujian", value=datetime.date.today())
 
-st.divider()
+    with col3:
+        if df_master_all is not None and 'Angkatan' in df_master_all.columns:
+            list_angkatan = sorted(list(df_master_all['Angkatan'].dropna().unique()))
+            default_index = list_angkatan.index("2023") if "2023" in list_angkatan else 0
+            selected_angkatan = st.selectbox("Pilih Angkatan", list_angkatan, index=default_index)
+        else:
+            selected_angkatan = st.text_input("Angkatan", value="2023").strip()
 
-# 3. Form Upload File
-st.subheader("2. Unggah File Ujian")
-file_ujian = st.file_uploader("Upload File Hasil Ujian (.xlsx)", type=["xlsx"])
+    st.divider()
 
-if file_ujian and df_master_all is not None:
-    # Filter Master Berdasarkan Angkatan
-    if 'Angkatan' in df_master_all.columns:
-        df_master = df_master_all[df_master_all['Angkatan'] == str(selected_angkatan)].copy()
-    else:
-        df_master = df_master_all.copy()
+    st.subheader("2. Unggah File Ujian")
+    file_ujian = st.file_uploader("Upload File Hasil Ujian (.xlsx)", type=["xlsx"], key="olah_nilai")
 
-    if df_master.empty:
-        st.warning(f"⚠️ Tidak ada data mahasiswa angkatan {selected_angkatan} di dalam file master_mahasiswa.xlsx!")
-        st.stop()
+    if file_ujian and df_master_all is not None:
+        if 'Angkatan' in df_master_all.columns:
+            df_master = df_master_all[df_master_all['Angkatan'] == str(selected_angkatan)].copy()
+        else:
+            df_master = df_master_all.copy()
 
-    # Read Excel Ujian & Standardisasi Header Kolom
-    try:
-        df_raw = pd.read_excel(file_ujian)
-        df_raw.columns = [str(c).strip() for c in df_raw.columns]
-        
-        rename_dict = {}
-        for col in df_raw.columns:
-            col_clean = col.lower().replace('_', ' ').replace('-', ' ').strip()
-            if col_clean in ['nomor peserta', 'no peserta', 'nim', 'no. peserta']:
-                rename_dict[col] = 'NIM'
-            elif col_clean in ['nama peserta', 'nama mahasiswa', 'nama', 'full name']:
-                rename_dict[col] = 'Nama'
-        
-        df_raw = df_raw.rename(columns=rename_dict)
-        
-        if 'NIM' not in df_raw.columns:
-            st.error("❌ Kolom 'Nomor Peserta' atau 'NIM' tidak ditemukan di file ujian.")
+        if df_master.empty:
+            st.warning(f"⚠️ Tidak ada data mahasiswa angkatan {selected_angkatan} di dalam file master_mahasiswa.xlsx!")
             st.stop()
-            
-        df_raw['NIM'] = df_raw['NIM'].astype(str).str.strip()
-        
-        if 'Nama' not in df_raw.columns and 'Nama' in df_master.columns:
-            map_nama = dict(zip(df_master['NIM'], df_master['Nama']))
-            df_raw['Nama'] = df_raw['NIM'].map(map_nama).fillna('')
 
-    except Exception as e:
-        st.error(f"❌ Gagal membaca file ujian yang diunggah. Detail: {e}")
-        st.stop()
-    
-    # Deteksi Kolom Soal
-    non_soal_cols = {'NIM', 'Nama', 'Sesi', 'Nomor Peserta', 'Nama Peserta'}
-    soal_cols = [c for c in df_raw.columns if c not in non_soal_cols]
-    
-    if 'Sesi' not in df_raw.columns:
-        df_raw['Sesi'] = "1"
-    
-    kunci = 'A'
-    
-    # Hitung Nilai Peserta Hadir
-    df_raw['Jumlah Benar'] = (df_raw[soal_cols] == kunci).sum(axis=1)
-    total_soal = len(soal_cols)
-    df_raw['Nilai (100)'] = ((df_raw['Jumlah Benar'] / total_soal) * 100).round(2)
-    
-    # Matching Tracing TH
-    nim_hadir = set(df_raw['NIM'])
-    df_th = df_master[~df_master['NIM'].isin(nim_hadir)].copy()
-    
-    cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
-    
-    if not df_th.empty:
-        df_th['Sesi'] = "TH"
-        df_th['Jumlah Benar'] = 0
-        df_th['Nilai (100)'] = 0.0
-        for sc in soal_cols:
-            df_th[sc] = "TH"
+        try:
+            df_raw = pd.read_excel(file_ujian)
+            df_raw.columns = [str(c).strip() for c in df_raw.columns]
             
-        df_nilai_th = df_th.reindex(columns=cols_nilai_order).fillna('')
-    else:
-        df_nilai_th = pd.DataFrame(columns=cols_nilai_order)
+            rename_dict = {}
+            for col in df_raw.columns:
+                col_clean = col.lower().replace('_', ' ').replace('-', ' ').strip()
+                if col_clean in ['nomor peserta', 'no peserta', 'nim', 'no. peserta']:
+                    rename_dict[col] = 'NIM'
+                elif col_clean in ['nama peserta', 'nama mahasiswa', 'nama', 'full name']:
+                    rename_dict[col] = 'Nama'
             
-    df_nilai_hadir = df_raw.reindex(columns=cols_nilai_order).fillna('')
-    
-    if not df_th.empty:
-        df_nilai_final = pd.concat([df_nilai_hadir, df_nilai_th], ignore_index=True)
-    else:
-        df_nilai_final = df_nilai_hadir.copy()
-        
-    df_nilai_final = df_nilai_final.sort_values(by=['Nilai (100)', 'NIM'], ascending=[False, True]).reset_index(drop=True)
-    
-    # Analisis Statistik
-    opsi_valid = ['A', 'B', 'C', 'D', 'E']
-    df_analisis_peserta = df_raw[df_raw[soal_cols].isin(opsi_valid).any(axis=1)].copy()
-    
-    total_terdaftar = len(df_master)
-    peserta_hadir = len(df_analisis_peserta)
-    peserta_th = total_terdaftar - peserta_hadir
-    
-    df_analisis_peserta = df_analisis_peserta.sort_values(by='Nilai (100)', ascending=False).reset_index(drop=True)
-    n_group = int(np.ceil(peserta_hadir * 0.27)) if peserta_hadir > 0 else 0
-    top_group = df_analisis_peserta.head(n_group)
-    bottom_group = df_analisis_peserta.tail(n_group)
-    T = n_group * 2
-    
-    analysis_rows = []
-    for soal in soal_cols:
-        jumlah_benar = (df_analisis_peserta[soal] == 'A').sum()
-        persentase = (jumlah_benar / peserta_hadir * 100) if peserta_hadir > 0 else 0
-        
-        Ru = (top_group[soal] == 'A').sum() if n_group > 0 else 0
-        Rl = (bottom_group[soal] == 'A').sum() if n_group > 0 else 0
-        
-        p = (Ru + Rl) / T if T > 0 else 0
-        D = (Ru - Rl) / (0.5 * T) if T > 0 else 0
-        
-        if p > 0.85: interp_diff = "Very Easy"
-        elif p >= 0.71: interp_diff = "Easy"
-        elif p >= 0.30: interp_diff = "Moderate"
-        elif p >= 0.15: interp_diff = "Difficult"
-        else: interp_diff = "Very Difficult"
-        
-        if D > 0.85: interp_disc = "To be discarded"
-        elif D >= 0.71: interp_disc = "To be revised"
-        elif D >= 0.30: interp_disc = "Very good item"
-        elif D >= 0.15: interp_disc = "To be revised"
-        else: interp_disc = "To be discarded"
-        
-        proporsi_opsi = []
-        for opt in ['A', 'B', 'C', 'D', 'E']:
-            c_top = (top_group[soal] == opt).sum() if n_group > 0 else 0
-            c_bot = (bottom_group[soal] == opt).sum() if n_group > 0 else 0
-            tot_opt = (c_top + c_bot) / T if T > 0 else 0
-            proporsi_opsi.append(round(tot_opt, 2))
+            df_raw = df_raw.rename(columns=rename_dict)
             
-        row = [soal, jumlah_benar, round(persentase, 2), round(p, 2), interp_diff, round(D, 2), interp_disc] + proporsi_opsi
-        analysis_rows.append(row)
-        
-    analysis_headers = [
-        "Soal", "Jumlah Benar", "Persentase Benar (%)", "Difficulty Index",
-        "Interpretasi Difficulty", "Discrimination Index", "Interpretasi Discrimination",
-        "A", "B", "C", "D", "E"
-    ]
-    df_analysis_table = pd.DataFrame(analysis_rows, columns=analysis_headers)
-    
-    # Generate Output Excel
-    output_buffer = io.BytesIO()
-    with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
-        df_nilai_final.to_excel(writer, sheet_name='Nilai', index=False)
-        
-        df_metadata = pd.DataFrame([
-            ["Nama Mata Kuliah:", nama_matkul],
-            ["Jenis Ujian:", jenis_ujian],
-            ["Versi Soal:", versi_soal],
-            ["Angkatan:", str(selected_angkatan)],
-            ["Tanggal Ujian:", str(tgl_ujian)],
-            ["Jumlah Soal:", total_soal],
-            ["Peserta Hadir / TH:", f"{peserta_hadir} / {peserta_th}"]
-        ])
-        df_metadata.to_excel(writer, sheet_name='Analysis', index=False, header=False, startrow=0)
-        df_analysis_table.to_excel(writer, sheet_name='Analysis', index=False, startrow=8)
-        
-        wb = writer.book
-        
-        # --- 1. Formatting Sheet Nilai ---
-        ws_nilai = wb['Nilai']
-        ws_nilai.column_dimensions['A'].width = 15  # Sesi
-        ws_nilai.column_dimensions['B'].width = 15  # NIM
-        ws_nilai.column_dimensions['C'].width = 40  # Nama
-        ws_nilai.column_dimensions['D'].width = 16  # Jumlah Benar
-        ws_nilai.column_dimensions['E'].width = 16  # Nilai (100)
-        
-        # Format angka 2 desimal di Nilai (100)
-        for r in range(2, len(df_nilai_final) + 2):
-            ws_nilai.cell(row=r, column=5).number_format = '0.00'
+            if 'NIM' not in df_raw.columns:
+                st.error("❌ Kolom 'Nomor Peserta' atau 'NIM' tidak ditemukan di file ujian.")
+                st.stop()
+                
+            df_raw['NIM'] = df_raw['NIM'].astype(str).str.strip()
             
-        # Atur lebar kolom Q1 s.d Qn
-        for col_idx in range(6, 6 + len(soal_cols)):
-            col_letter = get_column_letter(col_idx)
-            ws_nilai.column_dimensions[col_letter].width = 8
-        
-        # --- 2. Formatting Sheet Analysis ---
-        ws_analysis = wb['Analysis']
-        
-        # Lebar Kolom Analysis (Kolom A diperlebar ke 22 agar header informasi tidak terpotong)
-        col_widths_analysis = {
-            'A': 22, 'B': 15, 'C': 22, 'D': 16, 'E': 22, 'F': 20, 'G': 26,
-            'H': 8, 'I': 8, 'J': 8, 'K': 8, 'L': 8
-        }
-        for col_letter, width in col_widths_analysis.items():
-            ws_analysis.column_dimensions[col_letter].width = width
-            
-        fill_purple = PatternFill(start_color="A7A6F6", end_color="A7A6F6", fill_type="solid")
-        fill_blue   = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
-        fill_green  = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
-        fill_yellow = PatternFill(start_color="FFFACD", end_color="FFFACD", fill_type="solid")
-        fill_pink   = PatternFill(start_color="FFC0CB", end_color="FFC0CB", fill_type="solid")
-        
-        start_row_data = 10
-        end_row_data = start_row_data + len(df_analysis_table) - 1
-        
-        for r in range(start_row_data, end_row_data + 1):
-            for col_idx in [2, 3, 4, 6, 8, 9, 10, 11, 12]:
-                cell = ws_analysis.cell(row=r, column=col_idx)
-                cell.number_format = '0.00'
-            
-            cell_diff = ws_analysis.cell(row=r, column=5)
-            val_diff = str(cell_diff.value)
-            if val_diff == "Very Easy": cell_diff.fill = fill_purple
-            elif val_diff == "Easy": cell_diff.fill = fill_blue
-            elif val_diff == "Moderate": cell_diff.fill = fill_green
-            elif val_diff == "Difficult": cell_diff.fill = fill_yellow
-            elif val_diff == "Very Difficult": cell_diff.fill = fill_pink
-            
-            cell_disc = ws_analysis.cell(row=r, column=7)
-            val_disc = str(cell_disc.value)
-            if val_disc == "Very good item": cell_disc.fill = fill_green
-            elif val_disc == "To be revised": cell_disc.fill = fill_yellow
-            elif val_disc == "To be discarded": cell_disc.fill = fill_pink
-            
-            for c_opt in range(8, 13):
-                cell_opt = ws_analysis.cell(row=r, column=c_opt)
-                try:
-                    val_opt = float(cell_opt.value)
-                    if val_opt < 0.05:
-                        cell_opt.fill = fill_pink
-                except (ValueError, TypeError):
-                    pass
+            if 'Nama' not in df_raw.columns and 'Nama' in df_master.columns:
+                map_nama = dict(zip(df_master['NIM'], df_master['Nama']))
+                df_raw['Nama'] = df_raw['NIM'].map(map_nama).fillna('')
 
-    output_buffer.seek(0)
+        except Exception as e:
+            st.error(f"❌ Gagal membaca file ujian yang diunggah. Detail: {e}")
+            st.stop()
+        
+        non_soal_cols = {'NIM', 'Nama', 'Sesi', 'Nomor Peserta', 'Nama Peserta'}
+        soal_cols = [c for c in df_raw.columns if c not in non_soal_cols]
+        
+        if 'Sesi' not in df_raw.columns:
+            df_raw['Sesi'] = "1"
+        
+        kunci = 'A'
+        
+        df_raw['Jumlah Benar'] = (df_raw[soal_cols] == kunci).sum(axis=1)
+        total_soal = len(soal_cols)
+        df_raw['Nilai (100)'] = ((df_raw['Jumlah Benar'] / total_soal) * 100).round(2)
+        
+        nim_hadir = set(df_raw['NIM'])
+        df_th = df_master[~df_master['NIM'].isin(nim_hadir)].copy()
+        
+        cols_nilai_order = ['Sesi', 'NIM', 'Nama', 'Jumlah Benar', 'Nilai (100)'] + soal_cols
+        
+        if not df_th.empty:
+            df_th['Sesi'] = "TH"
+            df_th['Jumlah Benar'] = 0
+            df_th['Nilai (100)'] = 0.0
+            for sc in soal_cols:
+                df_th[sc] = "TH"
+                
+            df_nilai_th = df_th.reindex(columns=cols_nilai_order).fillna('')
+        else:
+            df_nilai_th = pd.DataFrame(columns=cols_nilai_order)
+                
+        df_nilai_hadir = df_raw.reindex(columns=cols_nilai_order).fillna('')
+        
+        if not df_th.empty:
+            df_nilai_final = pd.concat([df_nilai_hadir, df_nilai_th], ignore_index=True)
+        else:
+            df_nilai_final = df_nilai_hadir.copy()
+            
+        df_nilai_final = df_nilai_final.sort_values(by=['Nilai (100)', 'NIM'], ascending=[False, True]).reset_index(drop=True)
+        
+        # Analisis Statistik
+        opsi_valid = ['A', 'B', 'C', 'D', 'E']
+        df_analisis_peserta = df_raw[df_raw[soal_cols].isin(opsi_valid).any(axis=1)].copy()
+        
+        total_terdaftar = len(df_master)
+        peserta_hadir = len(df_analisis_peserta)
+        peserta_th = total_terdaftar - peserta_hadir
+        
+        df_analisis_peserta = df_analisis_peserta.sort_values(by='Nilai (100)', ascending=False).reset_index(drop=True)
+        n_group = int(np.ceil(peserta_hadir * 0.27)) if peserta_hadir > 0 else 0
+        top_group = df_analisis_peserta.head(n_group)
+        bottom_group = df_analisis_peserta.tail(n_group)
+        T = n_group * 2
+        
+        analysis_rows = []
+        for soal in soal_cols:
+            jumlah_benar = (df_analisis_peserta[soal] == 'A').sum()
+            persentase = (jumlah_benar / peserta_hadir * 100) if peserta_hadir > 0 else 0
+            
+            Ru = (top_group[soal] == 'A').sum() if n_group > 0 else 0
+            Rl = (bottom_group[soal] == 'A').sum() if n_group > 0 else 0
+            
+            p = (Ru + Rl) / T if T > 0 else 0
+            D = (Ru - Rl) / (0.5 * T) if T > 0 else 0
+            
+            if p > 0.85: interp_diff = "Very Easy"
+            elif p >= 0.71: interp_diff = "Easy"
+            elif p >= 0.30: interp_diff = "Moderate"
+            elif p >= 0.15: interp_diff = "Difficult"
+            else: interp_diff = "Very Difficult"
+            
+            if D > 0.85: interp_disc = "To be discarded"
+            elif D >= 0.71: interp_disc = "To be revised"
+            elif D >= 0.30: interp_disc = "Very good item"
+            elif D >= 0.15: interp_disc = "To be revised"
+            else: interp_disc = "To be discarded"
+            
+            proporsi_opsi = []
+            for opt in ['A', 'B', 'C', 'D', 'E']:
+                c_top = (top_group[soal] == opt).sum() if n_group > 0 else 0
+                c_bot = (bottom_group[soal] == opt).sum() if n_group > 0 else 0
+                tot_opt = (c_top + c_bot) / T if T > 0 else 0
+                proporsi_opsi.append(round(tot_opt, 2))
+                
+            row = [soal, jumlah_benar, round(persentase, 2), round(p, 2), interp_diff, round(D, 2), interp_disc] + proporsi_opsi
+            analysis_rows.append(row)
+            
+        analysis_headers = [
+            "Soal", "Jumlah Benar", "Persentase Benar (%)", "Difficulty Index",
+            "Interpretasi Difficulty", "Discrimination Index", "Interpretasi Discrimination",
+            "A", "B", "C", "D", "E"
+        ]
+        df_analysis_table = pd.DataFrame(analysis_rows, columns=analysis_headers)
+        
+        # Output Excel
+        output_buffer = io.BytesIO()
+        with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+            df_nilai_final.to_excel(writer, sheet_name='Nilai', index=False)
+            
+            df_metadata = pd.DataFrame([
+                ["Nama Mata Kuliah:", nama_matkul],
+                ["Jenis Ujian:", jenis_ujian],
+                ["Versi Soal:", versi_soal],
+                ["Angkatan:", str(selected_angkatan)],
+                ["Tanggal Ujian:", str(tgl_ujian)],
+                ["Jumlah Soal:", total_soal],
+                ["Peserta Hadir / TH:", f"{peserta_hadir} / {peserta_th}"]
+            ])
+            df_metadata.to_excel(writer, sheet_name='Analysis', index=False, header=False, startrow=0)
+            df_analysis_table.to_excel(writer, sheet_name='Analysis', index=False, startrow=8)
+            
+            wb = writer.book
+            
+            ws_nilai = wb['Nilai']
+            ws_nilai.column_dimensions['A'].width = 15
+            ws_nilai.column_dimensions['B'].width = 15
+            ws_nilai.column_dimensions['C'].width = 40
+            ws_nilai.column_dimensions['D'].width = 16
+            ws_nilai.column_dimensions['E'].width = 16
+            
+            for r in range(2, len(df_nilai_final) + 2):
+                ws_nilai.cell(row=r, column=5).number_format = '0.00'
+                
+            for col_idx in range(6, 6 + len(soal_cols)):
+                col_letter = get_column_letter(col_idx)
+                ws_nilai.column_dimensions[col_letter].width = 8
+            
+            ws_analysis = wb['Analysis']
+            col_widths_analysis = {
+                'A': 22, 'B': 15, 'C': 22, 'D': 16, 'E': 22, 'F': 20, 'G': 26,
+                'H': 8, 'I': 8, 'J': 8, 'K': 8, 'L': 8
+            }
+            for col_letter, width in col_widths_analysis.items():
+                ws_analysis.column_dimensions[col_letter].width = width
+                
+            fill_purple = PatternFill(start_color="A7A6F6", end_color="A7A6F6", fill_type="solid")
+            fill_blue   = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+            fill_green  = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+            fill_yellow = PatternFill(start_color="FFFACD", end_color="FFFACD", fill_type="solid")
+            fill_pink   = PatternFill(start_color="FFC0CB", end_color="FFC0CB", fill_type="solid")
+            
+            start_row_data = 10
+            end_row_data = start_row_data + len(df_analysis_table) - 1
+            
+            for r in range(start_row_data, end_row_data + 1):
+                for col_idx in [2, 3, 4, 6, 8, 9, 10, 11, 12]:
+                    cell = ws_analysis.cell(row=r, column=col_idx)
+                    cell.number_format = '0.00'
+                
+                cell_diff = ws_analysis.cell(row=r, column=5)
+                val_diff = str(cell_diff.value)
+                if val_diff == "Very Easy": cell_diff.fill = fill_purple
+                elif val_diff == "Easy": cell_diff.fill = fill_blue
+                elif val_diff == "Moderate": cell_diff.fill = fill_green
+                elif val_diff == "Difficult": cell_diff.fill = fill_yellow
+                elif val_diff == "Very Difficult": cell_diff.fill = fill_pink
+                
+                cell_disc = ws_analysis.cell(row=r, column=7)
+                val_disc = str(cell_disc.value)
+                if val_disc == "Very good item": cell_disc.fill = fill_green
+                elif val_disc == "To be revised": cell_disc.fill = fill_yellow
+                elif val_disc == "To be discarded": cell_disc.fill = fill_pink
+                
+                for c_opt in range(8, 13):
+                    cell_opt = ws_analysis.cell(row=r, column=c_opt)
+                    try:
+                        val_opt = float(cell_opt.value)
+                        if val_opt < 0.05:
+                            cell_opt.fill = fill_pink
+                    except (ValueError, TypeError):
+                        pass
+
+        output_buffer.seek(0)
+        
+        # --- PENYESUAIAN AWALAN [Nilai] PADA NAMA FILE UNDUHAN ---
+        tgl_yymmdd = tgl_ujian.strftime("%y%m%d")
+        combo_tgl_versi = f"{tgl_yymmdd}{versi_soal}"
+        tgl_indo = format_tanggal_indonesia(tgl_ujian)
+        
+        # Pola Nama File: [Nilai] FBS1_2610301_Post Test_30 Oktober 2026.xlsx
+        filename_download = f"[Nilai] {nama_matkul}_{combo_tgl_versi}_{jenis_ujian}_{tgl_indo}.xlsx"
+        
+        st.success(f"✅ Data berhasil diproses untuk **{nama_matkul} - {jenis_ujian}**!")
+        st.download_button(
+            label=f"📥 Download File: {filename_download}",
+            data=output_buffer,
+            file_name=filename_download,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+# ==============================================================================
+# MENU 2: GENERATE SOAL
+# ==============================================================================
+elif menu_option == "⚡ Generate Soal":
+    st.title("⚡ Generate Import Soal CBT")
+    st.write("Unggah file Excel berisi sheet **`Info`** (Baris B1:B4) dan sheet **`Soal`** (Kolom A s.d I) untuk dikonversi menjadi format import CBT (23 Kolom).")
     
-    filename_download = f"Hasil_{nama_matkul}_{jenis_ujian}_{selected_angkatan}_V{versi_soal}_{tgl_ujian}.xlsx"
+    file_soal = st.file_uploader("Upload File Spreadsheet Input Soal (.xlsx)", type=["xlsx"], key="gen_soal")
     
-    st.success(f"✅ Data berhasil diproses untuk **{nama_matkul} - {jenis_ujian} (Angkatan {selected_angkatan})**!")
-    st.download_button(
-        label=f"📥 Download File: {filename_download}",
-        data=output_buffer,
-        file_name=filename_download,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    if file_soal:
+        try:
+            excel_file = pd.ExcelFile(file_soal)
+            
+            if 'Info' not in excel_file.sheet_names or 'Soal' not in excel_file.sheet_names:
+                st.error("❌ Error: File harus memiliki sheet bernama **'Info'** dan **'Soal'**!")
+                st.stop()
+                
+            df_info = pd.read_excel(excel_file, sheet_name='Info', header=None)
+            matkul_gen = str(df_info.iloc[0, 1] if len(df_info) > 0 else '').strip()
+            kode_gen = str(df_info.iloc[1, 1] if len(df_info) > 1 else '').strip()
+            
+            raw_tgl_gen = df_info.iloc[2, 1] if len(df_info) > 2 else ''
+            if isinstance(raw_tgl_gen, (pd.Timestamp, datetime.date, datetime.datetime)):
+                tgl_gen_str = raw_tgl_gen.strftime("%Y%m%d")
+            else:
+                tgl_gen_str = str(raw_tgl_gen).strip()
+                
+            versi_gen = str(df_info.iloc[3, 1] if len(df_info) > 3 else '').strip()
+            
+            df_soal = pd.read_excel(excel_file, sheet_name='Soal')
+            
+            if df_soal.empty:
+                st.warning("⚠️ Tidak ada baris soal yang ditemukan di sheet 'Soal'.")
+                st.stop()
+                
+            output_rows = []
+            
+            for idx, row in df_soal.iterrows():
+                no_soal_raw = str(row.iloc[0] if len(row) > 0 and pd.notna(row.iloc[0]) else (idx + 1)).strip()
+                if no_soal_raw.endswith('.0'):
+                    no_soal_raw = no_soal_raw[:-2]
+                    
+                raw_vignette = str(row.iloc[1] if len(row) > 1 and pd.notna(row.iloc[1]) else '').strip()
+                pertanyaan = str(row.iloc[2] if len(row) > 2 and pd.notna(row.iloc[2]) else '').strip()
+                media = str(row.iloc[3] if len(row) > 3 and pd.notna(row.iloc[3]) else '').strip().lower()
+                opsi_benar = row.iloc[4] if len(row) > 4 and pd.notna(row.iloc[4]) else ''
+                opsi_salah1 = row.iloc[5] if len(row) > 5 and pd.notna(row.iloc[5]) else ''
+                opsi_salah2 = row.iloc[6] if len(row) > 6 and pd.notna(row.iloc[6]) else ''
+                opsi_salah3 = row.iloc[7] if len(row) > 7 and pd.notna(row.iloc[7]) else ''
+                opsi_salah4 = row.iloc[8] if len(row) > 8 and pd.notna(row.iloc[8]) else ''
+                
+                if not no_soal_raw and not raw_vignette and not pertanyaan:
+                    continue
+                    
+                no_soal_formatted = no_soal_raw.zfill(3)
+                
+                id_base = f"{matkul_gen}-{kode_gen}-{tgl_gen_str}{versi_gen}{no_soal_formatted}"
+                random_two_digits = str(random.randint(10, 99))
+                id_soal_lengkap = f"{id_base}{random_two_digits}"
+                
+                vignette_formatted = f'<span style="font-size: 0.8em; color: #ebebeb;">{id_soal_lengkap}</span><br>{raw_vignette}'
+                
+                if 'gambar' in media:
+                    vignette_formatted += f'<br><br><img src="https://fkupi-it.github.io/mediacbt/{id_base}.jpg" alt="Gambar soal" style="max-width:100%; height:auto;">'
+                if 'audio' in media:
+                    vignette_formatted += f'<br><br><video controls="controls" width="300" height="150"><source src="https://fkupi-it.github.io/mediacbt/{id_base}.mp3" type="audio/mpeg"></video>'
+                    
+                out_row = [
+                    0, 1, 0, "", 0, "", "", "", "", "", "", "", "", "", "",
+                    vignette_formatted,
+                    pertanyaan,
+                    1,
+                    opsi_benar, opsi_salah1, opsi_salah2, opsi_salah3, opsi_salah4
+                ]
+                output_rows.append(out_row)
+                
+            headers_cbt = [
+                "Tipe Soal\n\n0 = Jawaban tunggal\n1 = Jawaban banyak\n2 = Cocokan kolom \n3 = Jawaban singkat\n4 = Jawaban uraian",
+                "Tampilan Urutan Pilihan\n\n0 = Tidak diacak\n1 = Diacak",
+                "Tampilkan / Sembunyikan Pilihan\n\n0 = Tampilkan\n1 = Sembunyikan",
+                "Label Pilihan\n\n(Kosongkan untuk menyesuaikan dengan template ujian)",
+                "Enkripsi Penyimpanan Soal\n\n0 = Tidak dienkripsi\n1 = Dienkripsi",
+                "ID Paket Lumbung Soal Nasional",
+                "No. Unik Lumbung Soal Nasional",
+                "Versi Lumbung Soal Nasional",
+                "Kode Soal Examtool\n\n(Kosongkan untuk soal baru, isi untuk update)",
+                "Kode Soal Tambahan",
+                "Area Kompetensi",
+                "Sistem Tubuh",
+                "Tingkat Kemampuan",
+                "Kata Kunci",
+                "Referensi",
+                "Badan Soal",
+                "Pertanyaan",
+                "Kunci",
+                "Pilihan 1",
+                "Pilihan 2",
+                "Pilihan 3",
+                "Pilihan 4",
+                "Pilihan 5"
+            ]
+            
+            df_gen_output = pd.DataFrame(output_rows, columns=headers_cbt)
+            
+            gen_buffer = io.BytesIO()
+            with pd.ExcelWriter(gen_buffer, engine='openpyxl') as writer:
+                df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
+            gen_buffer.seek(0)
+            
+            filename_gen = f"Import_Soal_{matkul_gen}_{kode_gen}_{tgl_gen_str}{versi_gen}.xlsx"
+            
+            st.success(f"✅ Berhasil mengonversi **{len(output_rows)} soal**!")
+            st.download_button(
+                label=f"📥 Download File Import CBT: {filename_gen}",
+                data=gen_buffer,
+                file_name=filename_gen,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+        except Exception as e:
+            st.error(f"❌ Terjadi kesalahan saat memproses file soal. Detail: {e}")
