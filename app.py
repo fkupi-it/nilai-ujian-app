@@ -456,7 +456,9 @@ elif menu_option == "⚡ Generate Soal":
                 df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
             gen_buffer.seek(0)
             
-            filename_gen = f"Import_Soal_{matkul_gen}_{kode_gen}_{tgl_gen_yymmdd}{versi_gen}.xlsx"
+            # --- PENYESUAIAN FORMAT NAMA FILE UNDUHAN BARU ---
+            combo_tgl_versi_gen = f"{tgl_gen_yymmdd}{versi_gen}"
+            filename_gen = f"[ExamTools - Soal] {matkul_gen}_{combo_tgl_versi_gen}_{jenis_gen}.xlsx"
             
             st.success(f"✅ Berhasil mengonversi **{len(output_rows)} soal**!")
             st.download_button(
