@@ -4,7 +4,7 @@ import numpy as np
 import io
 import datetime
 import random
-import openpyxl
+import xlsxwriter
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -324,7 +324,7 @@ if menu_option == "📊 Olah Nilai":
         )
 
 # ==============================================================================
-# MENU 2: GENERATE SOAL (PENGISIAN BERBASIS TEMPLATE ASLI EXAMTOOLS)
+# MENU 2: GENERATE SOAL (NATIVE XLSXWRITER ENGINE - 100% EXAMTOOLS COMPATIBLE)
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
@@ -361,27 +361,54 @@ elif menu_option == "⚡ Generate Soal":
     
     if file_soal:
         try:
-            # Buka Template Master ExamTools
-            try:
-                wb_tpl = openpyxl.load_workbook("template_examtools.xlsx")
-                ws_tpl = wb_tpl.active
-            except FileNotFoundError:
-                st.error("❌ File 'template_examtools.xlsx' tidak ditemukan di repositori GitHub! Mohon simpan file template di folder repositori.")
-                st.stop()
-
             df_soal = pd.read_excel(file_soal, sheet_name=0)
             
             if df_soal.empty:
                 st.warning("⚠️ File Excel soal tidak berisi data.")
                 st.stop()
                 
-            current_row = 2 # Mulai mengisi dari baris ke-2 (di bawah header)
+            headers_cbt = [
+                "Tipe Soal\n\n0 = Jawaban tunggal\n1 = Jawaban banyak\n2 = Cocokan kolom \n3 = Jawaban singkat\n4 = Jawaban uraian",
+                "Tampilan Urutan Pilihan\n\n0 = Tidak diacak\n1 = Diacak",
+                "Tampilkan / Sembunyikan Pilihan\n\n0 = Tampilkan\n1 = Sembunyikan",
+                "Label Pilihan\n\n(Kosongkan untuk menyesuaikan dengan template ujian)",
+                "Enkripsi Penyimpanan Soal\n\n0 = Tidak dienkripsi\n1 = Dienkripsi",
+                "ID Paket Lumbung Soal Nasional",
+                "No. Unik Lumbung Soal Nasional",
+                "Versi Lumbung Soal Nasional",
+                "Kode Soal Examtool\n\n(Kosongkan untuk soal baru, isi untuk update)",
+                "Kode Soal Tambahan",
+                "Area Kompetensi",
+                "Sistem Tubuh",
+                "Tingkat Kemampuan",
+                "Kata Kunci",
+                "Referensi",
+                "Badan Soal",
+                "Pertanyaan",
+                "Kunci",
+                "Pilihan 1",
+                "Pilihan 2",
+                "Pilihan 3",
+                "Pilihan 4",
+                "Pilihan 5"
+            ]
+            
+            # Membuat Workbook Excel menggunakan xlsxwriter (100% identik dengan hasil export Google Sheets / AppScript)
+            gen_buffer = io.BytesIO()
+            workbook = xlsxwriter.Workbook(gen_buffer, {'in_memory': True})
+            worksheet = workbook.add_worksheet('Sheet1') # Mengunci nama sheet harus persis 'Sheet1'
+            
+            # Write Header di baris 0
+            for col_idx, header_text in enumerate(headers_cbt):
+                worksheet.write(0, col_idx, header_text)
+                
             count_soal = 0
+            row_out_idx = 1 # Mulai dari baris ke-2 (indeks 1)
             
             for idx, row in df_soal.iterrows():
-                def get_by_idx(col_idx):
-                    if col_idx < len(row):
-                        val = row.iloc[col_idx]
+                def get_by_idx(c_idx):
+                    if c_idx < len(row):
+                        val = row.iloc[c_idx]
                         if pd.notna(val):
                             return str(val).strip()
                     return ""
@@ -418,33 +445,32 @@ elif menu_option == "⚡ Generate Soal":
                 if 'audio' in media:
                     vignette_formatted += f'<br><br><video controls="controls" width="300" height="150"><source src="https://fkupi-it.github.io/mediacbt/{id_base}.mp3" type="audio/mpeg"></video>'
                 
-                # Pengisian Sel secara langsung ke Template openpyxl (Presisi Float & Null)
-                ws_tpl.cell(row=current_row, column=1, value=0.0)  # Tipe Soal
-                ws_tpl.cell(row=current_row, column=2, value=1.0)  # Tampilan Urutan Pilihan
-                ws_tpl.cell(row=current_row, column=3, value=0.0)  # Sembunyikan Pilihan
-                ws_tpl.cell(row=current_row, column=5, value=0.0)  # Enkripsi
+                # Pengulangan nilai numerik persis seperti AppScript
+                worksheet.write(row_out_idx, 0, 0) # Kolom A: Tipe Soal
+                worksheet.write(row_out_idx, 1, 1) # Kolom B: Tampilan Urutan
+                worksheet.write(row_out_idx, 2, 0) # Kolom C: Sembunyikan Pilihan
+                worksheet.write(row_out_idx, 4, 0) # Kolom E: Enkripsi
                 
-                ws_tpl.cell(row=current_row, column=16, value=vignette_formatted) # Badan Soal
-                ws_tpl.cell(row=current_row, column=17, value=pertanyaan)          # Pertanyaan
-                ws_tpl.cell(row=current_row, column=18, value=1.0)                 # Kunci
+                worksheet.write(row_out_idx, 15, vignette_formatted) # Kolom P: Badan Soal
+                worksheet.write(row_out_idx, 16, pertanyaan)          # Kolom Q: Pertanyaan
+                worksheet.write(row_out_idx, 17, 1)                  # Kolom R: Kunci
                 
-                if opsi_benar:  ws_tpl.cell(row=current_row, column=19, value=opsi_benar)
-                if opsi_salah1: ws_tpl.cell(row=current_row, column=20, value=opsi_salah1)
-                if opsi_salah2: ws_tpl.cell(row=current_row, column=21, value=opsi_salah2)
-                if opsi_salah3: ws_tpl.cell(row=current_row, column=22, value=opsi_salah3)
-                if opsi_salah4: ws_tpl.cell(row=current_row, column=23, value=opsi_salah4)
+                if opsi_benar:  worksheet.write(row_out_idx, 18, opsi_benar)  # Kolom S
+                if opsi_salah1: worksheet.write(row_out_idx, 19, opsi_salah1) # Kolom T
+                if opsi_salah2: worksheet.write(row_out_idx, 20, opsi_salah2) # Kolom U
+                if opsi_salah3: worksheet.write(row_out_idx, 21, opsi_salah3) # Kolom V
+                if opsi_salah4: worksheet.write(row_out_idx, 22, opsi_salah4) # Kolom W
                 
-                current_row += 1
+                row_out_idx += 1
                 count_soal += 1
-                
-            gen_buffer = io.BytesIO()
-            wb_tpl.save(gen_buffer)
+
+            workbook.close()
             gen_buffer.seek(0)
             
             combo_tgl_versi_gen = f"{tgl_gen_yymmdd}{versi_gen}"
             filename_gen = f"[ExamTools - Soal] {matkul_gen}_{combo_tgl_versi_gen}_{jenis_gen}.xlsx"
             
-            st.success(f"✅ Berhasil mengonversi **{count_soal} soal** ke dalam template ExamTools!")
+            st.success(f"✅ Berhasil mengonversi **{count_soal} soal**!")
             st.download_button(
                 label=f"📥 Download File Import CBT: {filename_gen}",
                 data=gen_buffer,
