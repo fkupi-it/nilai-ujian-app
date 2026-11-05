@@ -226,7 +226,7 @@ if file_ujian and df_master_all is not None:
         ws_nilai = wb['Nilai']
         ws_nilai.column_dimensions['A'].width = 15  # Sesi
         ws_nilai.column_dimensions['B'].width = 15  # NIM
-        ws_nilai.column_dimensions['C'].width = 40  # Nama (Diperlebar)
+        ws_nilai.column_dimensions['C'].width = 40  # Nama
         ws_nilai.column_dimensions['D'].width = 16  # Jumlah Benar
         ws_nilai.column_dimensions['E'].width = 16  # Nilai (100)
         
@@ -242,8 +242,9 @@ if file_ujian and df_master_all is not None:
         # --- 2. Formatting Sheet Analysis ---
         ws_analysis = wb['Analysis']
         
+        # Lebar Kolom Analysis (Kolom A diperlebar ke 22 agar header informasi tidak terpotong)
         col_widths_analysis = {
-            'A': 10, 'B': 15, 'C': 22, 'D': 16, 'E': 22, 'F': 20, 'G': 26,
+            'A': 22, 'B': 15, 'C': 22, 'D': 16, 'E': 22, 'F': 20, 'G': 26,
             'H': 8, 'I': 8, 'J': 8, 'K': 8, 'L': 8
         }
         for col_letter, width in col_widths_analysis.items():
