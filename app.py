@@ -4,6 +4,7 @@ import numpy as np
 import io
 import datetime
 import random
+import openpyxl
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -323,7 +324,7 @@ if menu_option == "📊 Olah Nilai":
         )
 
 # ==============================================================================
-# MENU 2: GENERATE SOAL (PERBAIKAN COMPATIBILITY EXAMTOOLS PHP PARSER)
+# MENU 2: GENERATE SOAL (PENGISIAN BERBASIS TEMPLATE ASLI EXAMTOOLS)
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
@@ -360,13 +361,22 @@ elif menu_option == "⚡ Generate Soal":
     
     if file_soal:
         try:
+            # Buka Template Master ExamTools
+            try:
+                wb_tpl = openpyxl.load_workbook("template_examtools.xlsx")
+                ws_tpl = wb_tpl.active
+            except FileNotFoundError:
+                st.error("❌ File 'template_examtools.xlsx' tidak ditemukan di repositori GitHub! Mohon simpan file template di folder repositori.")
+                st.stop()
+
             df_soal = pd.read_excel(file_soal, sheet_name=0)
             
             if df_soal.empty:
                 st.warning("⚠️ File Excel soal tidak berisi data.")
                 st.stop()
                 
-            output_rows = []
+            current_row = 2 # Mulai mengisi dari baris ke-2 (di bawah header)
+            count_soal = 0
             
             for idx, row in df_soal.iterrows():
                 def get_by_idx(col_idx):
@@ -408,60 +418,33 @@ elif menu_option == "⚡ Generate Soal":
                 if 'audio' in media:
                     vignette_formatted += f'<br><br><video controls="controls" width="300" height="150"><source src="https://fkupi-it.github.io/mediacbt/{id_base}.mp3" type="audio/mpeg"></video>'
                 
-                # Menggunakan None untuk sel kosong agar XML tidak error di PHP PhpSpreadsheet
-                out_row = [
-                    0.0, 1.0, 0.0, None, 0.0, None, None, None, None, None, None, None, None, None, None,
-                    vignette_formatted,
-                    pertanyaan,
-                    1.0,
-                    opsi_benar if opsi_benar else None, 
-                    opsi_salah1 if opsi_salah1 else None, 
-                    opsi_salah2 if opsi_salah2 else None, 
-                    opsi_salah3 if opsi_salah3 else None, 
-                    opsi_salah4 if opsi_salah4 else None
-                ]
-                output_rows.append(out_row)
+                # Pengisian Sel secara langsung ke Template openpyxl (Presisi Float & Null)
+                ws_tpl.cell(row=current_row, column=1, value=0.0)  # Tipe Soal
+                ws_tpl.cell(row=current_row, column=2, value=1.0)  # Tampilan Urutan Pilihan
+                ws_tpl.cell(row=current_row, column=3, value=0.0)  # Sembunyikan Pilihan
+                ws_tpl.cell(row=current_row, column=5, value=0.0)  # Enkripsi
                 
-            headers_cbt = [
-                "Tipe Soal\n\n0 = Jawaban tunggal\n1 = Jawaban banyak\n2 = Cocokan kolom \n3 = Jawaban singkat\n4 = Jawaban uraian",
-                "Tampilan Urutan Pilihan\n\n0 = Tidak diacak\n1 = Diacak",
-                "Tampilkan / Sembunyikan Pilihan\n\n0 = Tampilkan\n1 = Sembunyikan",
-                "Label Pilihan\n\n(Kosongkan untuk menyesuaikan dengan template ujian)",
-                "Enkripsi Penyimpanan Soal\n\n0 = Tidak dienkripsi\n1 = Dienkripsi",
-                "ID Paket Lumbung Soal Nasional",
-                "No. Unik Lumbung Soal Nasional",
-                "Versi Lumbung Soal Nasional",
-                "Kode Soal Examtool\n\n(Kosongkan untuk soal baru, isi untuk update)",
-                "Kode Soal Tambahan",
-                "Area Kompetensi",
-                "Sistem Tubuh",
-                "Tingkat Kemampuan",
-                "Kata Kunci",
-                "Referensi",
-                "Badan Soal",
-                "Pertanyaan",
-                "Kunci",
-                "Pilihan 1",
-                "Pilihan 2",
-                "Pilihan 3",
-                "Pilihan 4",
-                "Pilihan 5"
-            ]
-            
-            df_gen_output = pd.DataFrame(output_rows, columns=headers_cbt)
-            
+                ws_tpl.cell(row=current_row, column=16, value=vignette_formatted) # Badan Soal
+                ws_tpl.cell(row=current_row, column=17, value=pertanyaan)          # Pertanyaan
+                ws_tpl.cell(row=current_row, column=18, value=1.0)                 # Kunci
+                
+                if opsi_benar:  ws_tpl.cell(row=current_row, column=19, value=opsi_benar)
+                if opsi_salah1: ws_tpl.cell(row=current_row, column=20, value=opsi_salah1)
+                if opsi_salah2: ws_tpl.cell(row=current_row, column=21, value=opsi_salah2)
+                if opsi_salah3: ws_tpl.cell(row=current_row, column=22, value=opsi_salah3)
+                if opsi_salah4: ws_tpl.cell(row=current_row, column=23, value=opsi_salah4)
+                
+                current_row += 1
+                count_soal += 1
+                
             gen_buffer = io.BytesIO()
-            with pd.ExcelWriter(gen_buffer, engine='openpyxl') as writer:
-                # Aktifkan Shared Strings untuk kompatibilitas sempurna dengan PhpSpreadsheet ExamTools
-                writer.book.use_shared_strings = True
-                df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
-                
+            wb_tpl.save(gen_buffer)
             gen_buffer.seek(0)
             
             combo_tgl_versi_gen = f"{tgl_gen_yymmdd}{versi_gen}"
             filename_gen = f"[ExamTools - Soal] {matkul_gen}_{combo_tgl_versi_gen}_{jenis_gen}.xlsx"
             
-            st.success(f"✅ Berhasil mengonversi **{len(output_rows)} soal**!")
+            st.success(f"✅ Berhasil mengonversi **{count_soal} soal** ke dalam template ExamTools!")
             st.download_button(
                 label=f"📥 Download File Import CBT: {filename_gen}",
                 data=gen_buffer,
