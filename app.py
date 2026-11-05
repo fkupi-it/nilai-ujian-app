@@ -323,17 +323,16 @@ if menu_option == "📊 Olah Nilai":
         )
 
 # ==============================================================================
-# MENU 2: GENERATE SOAL
+# MENU 2: GENERATE SOAL (PEMBACAAN POSISI KOLOM / INDEKS)
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
     
-    # 1. INFORMASI UJIAN (Pindah ke Interface UI)
+    # 1. INFORMASI UJIAN
     st.subheader("1. Informasi Ujian")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Mengubah Mata Kuliah dari selectbox menjadi text_input (Teks Bebas)
         matkul_gen = st.text_input("Mata Kuliah (Kode/Singkatan)", value="FBS1").strip().upper()
         jenis_gen = st.selectbox(
             "Jenis Ujian", 
@@ -345,7 +344,6 @@ elif menu_option == "⚡ Generate Soal":
 
     with col2:
         tgl_gen_input = st.date_input("Tanggal Ujian", value=datetime.date.today())
-        # Format YYMMDD (misal 2026-09-16 -> 260916)
         tgl_gen_yymmdd = tgl_gen_input.strftime("%y%m%d")
         st.caption(f"Format ID Tanggal: **{tgl_gen_yymmdd}**")
 
@@ -356,58 +354,54 @@ elif menu_option == "⚡ Generate Soal":
 
     # 2. UNGGAH FILE SOAL
     st.subheader("2. Unggah File Soal")
-    st.caption("Unggah file Excel (hanya 1 sheet) dengan kolom: `No.Soal`, `Vignette/Clinical Scenario`, `Pertanyaan`, `Media`, `Opsi Benar`, `Opsi Salah 1`, `Opsi Salah 2`, `Opsi Salah 3`, `Opsi Salah 4`")
+    st.caption("Unggah file Excel (hanya 1 sheet) dengan urutan kolom: **1. No.Soal | 2. Vignette | 3. Pertanyaan | 4. Media | 5. Opsi Benar | 6. Opsi Salah 1 | 7. Opsi Salah 2 | 8. Opsi Salah 3 | 9. Opsi Salah 4**")
     
     file_soal = st.file_uploader("Upload File Excel Soal (.xlsx)", type=["xlsx"], key="gen_soal")
     
     if file_soal:
         try:
-            # Read sheet pertama tanpa mempedulikan nama sheet
+            # Read sheet pertama tanpa membedakan header
             df_soal = pd.read_excel(file_soal, sheet_name=0)
             
             if df_soal.empty:
                 st.warning("⚠️ File Excel soal tidak berisi data.")
                 st.stop()
                 
-            # Standardisasi nama kolom (Lower & Strip)
-            df_soal.columns = [str(c).strip() for c in df_soal.columns]
-            
             output_rows = []
             
             for idx, row in df_soal.iterrows():
-                # Fungsi pembacaan kolom fleksibel
-                def get_val(possible_headers):
-                    for h in possible_headers:
-                        for col in df_soal.columns:
-                            if col.lower().strip() == h.lower().strip():
-                                val = row[col]
-                                if pd.notna(val):
-                                    return str(val).strip()
+                # Helper ambil isi sel berdasarkan indeks posisi kolom (0-8)
+                def get_by_idx(col_idx):
+                    if col_idx < len(row):
+                        val = row.iloc[col_idx]
+                        if pd.notna(val):
+                            return str(val).strip()
                     return ""
 
-                no_soal_raw = get_val(["No.Soal", "No Soal", "No", "Nomor"])
+                # Posisi Kolom
+                no_soal_raw = get_by_idx(0) # Kolom 1 (Indeks 0)
                 if not no_soal_raw:
                     no_soal_raw = str(idx + 1)
                 if no_soal_raw.endswith('.0'):
                     no_soal_raw = no_soal_raw[:-2]
                     
-                raw_vignette = get_val(["Vignette/Clinical Scenario", "Vignette", "Clinical Scenario", "Kasus"])
-                pertanyaan = get_val(["Pertanyaan", "Soal", "Question"])
-                media = get_val(["Media", "Gambar/Audio", "Link Gambar"]).lower()
+                raw_vignette = get_by_idx(1) # Kolom 2 (Indeks 1)
+                pertanyaan   = get_by_idx(2) # Kolom 3 (Indeks 2)
+                media        = get_by_idx(3).lower() # Kolom 4 (Indeks 3)
                 
-                opsi_benar = get_val(["Opsi Benar", "Kunci", "Jawaban Benar"])
-                opsi_salah1 = get_val(["Opsi Salah 1", "Pilihan Salah 1", "Distraktor 1"])
-                opsi_salah2 = get_val(["Opsi Salah 2", "Pilihan Salah 2", "Distraktor 2"])
-                opsi_salah3 = get_val(["Opsi Salah 3", "Pilihan Salah 3", "Distraktor 3"])
-                opsi_salah4 = get_val(["Opsi Salah 4", "Pilihan Salah 4", "Distraktor 4"])
+                opsi_benar  = get_by_idx(4) # Kolom 5 (Indeks 4)
+                opsi_salah1 = get_by_idx(5) # Kolom 6 (Indeks 5)
+                opsi_salah2 = get_by_idx(6) # Kolom 7 (Indeks 6)
+                opsi_salah3 = get_by_idx(7) # Kolom 8 (Indeks 7)
+                opsi_salah4 = get_by_idx(8) # Kolom 9 (Indeks 8)
                 
-                # Abaikan jika baris kosong
+                # Abaikan jika baris kosong sepenuhnya
                 if not no_soal_raw and not raw_vignette and not pertanyaan:
                     continue
                     
                 no_soal_formatted = no_soal_raw.zfill(3)
                 
-                # Formulasi ID Soal Base & Unik (menggunakan YYMMDD)
+                # Formulasi ID Soal Base & Unik (YYMMDD)
                 id_base = f"{matkul_gen}-{kode_gen}-{tgl_gen_yymmdd}{versi_gen}{no_soal_formatted}"
                 random_two_digits = str(random.randint(10, 99))
                 id_soal_lengkap = f"{id_base}{random_two_digits}"
