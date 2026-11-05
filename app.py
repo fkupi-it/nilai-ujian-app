@@ -333,11 +333,8 @@ elif menu_option == "⚡ Generate Soal":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        matkul_gen = st.selectbox(
-            "Mata Kuliah", 
-            ["FBS1", "FBS2", "FBS3", "FBS4", "DMS", "HIS"], 
-            index=0
-        )
+        # Mengubah Mata Kuliah dari selectbox menjadi text_input (Teks Bebas)
+        matkul_gen = st.text_input("Mata Kuliah (Kode/Singkatan)", value="FBS1").strip().upper()
         jenis_gen = st.selectbox(
             "Jenis Ujian", 
             ["Post Test", "Pre Test", "Remedial Post Test", "UTS", "UAS", "Remedial"], 
