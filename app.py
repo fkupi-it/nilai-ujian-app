@@ -323,7 +323,7 @@ if menu_option == "📊 Olah Nilai":
         )
 
 # ==============================================================================
-# MENU 2: GENERATE SOAL (PEMBACAAN POSISI KOLOM & SHARED STRINGS ENABLED)
+# MENU 2: GENERATE SOAL (PERBAIKAN COMPATIBILITY EXAMTOOLS PHP PARSER)
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
@@ -407,13 +407,18 @@ elif menu_option == "⚡ Generate Soal":
                     vignette_formatted += f'<br><br><img src="https://fkupi-it.github.io/mediacbt/{id_base}.jpg" alt="Gambar soal" style="max-width:100%; height:auto;">'
                 if 'audio' in media:
                     vignette_formatted += f'<br><br><video controls="controls" width="300" height="150"><source src="https://fkupi-it.github.io/mediacbt/{id_base}.mp3" type="audio/mpeg"></video>'
-                    
+                
+                # Menggunakan None untuk sel kosong agar XML tidak error di PHP PhpSpreadsheet
                 out_row = [
-                    0.0, 1.0, 0.0, "", 0.0, "", "", "", "", "", "", "", "", "", "",
+                    0.0, 1.0, 0.0, None, 0.0, None, None, None, None, None, None, None, None, None, None,
                     vignette_formatted,
                     pertanyaan,
                     1.0,
-                    opsi_benar, opsi_salah1, opsi_salah2, opsi_salah3, opsi_salah4
+                    opsi_benar if opsi_benar else None, 
+                    opsi_salah1 if opsi_salah1 else None, 
+                    opsi_salah2 if opsi_salah2 else None, 
+                    opsi_salah3 if opsi_salah3 else None, 
+                    opsi_salah4 if opsi_salah4 else None
                 ]
                 output_rows.append(out_row)
                 
@@ -447,7 +452,7 @@ elif menu_option == "⚡ Generate Soal":
             
             gen_buffer = io.BytesIO()
             with pd.ExcelWriter(gen_buffer, engine='openpyxl') as writer:
-                # AKTIFKAN SHARED STRINGS AGAR PARSER PHP EXAMTOOLS MEMBACA DENGAN SEMPURNA
+                # Aktifkan Shared Strings untuk kompatibilitas sempurna dengan PhpSpreadsheet ExamTools
                 writer.book.use_shared_strings = True
                 df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
                 
