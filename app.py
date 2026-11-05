@@ -16,6 +16,16 @@ NAMA_BULAN = {
     9: "September", 10: "Oktober", 11: "November", 12: "Desember"
 }
 
+# Mapping Jenis Ujian -> Kode Ujian
+MAP_KODE_UJIAN = {
+    "Post Test": "PO",
+    "Pre Test": "PR",
+    "Remedial Post Test": "POR",
+    "UTS": "UT",
+    "UAS": "UA",
+    "Remedial": "RE"
+}
+
 def format_tanggal_indonesia(dt_date):
     day = dt_date.day
     month = NAMA_BULAN[dt_date.month]
@@ -298,12 +308,10 @@ if menu_option == "📊 Olah Nilai":
 
         output_buffer.seek(0)
         
-        # --- PENYESUAIAN AWALAN [Nilai] PADA NAMA FILE UNDUHAN ---
         tgl_yymmdd = tgl_ujian.strftime("%y%m%d")
         combo_tgl_versi = f"{tgl_yymmdd}{versi_soal}"
         tgl_indo = format_tanggal_indonesia(tgl_ujian)
         
-        # Pola Nama File: [Nilai] FBS1_2610301_Post Test_30 Oktober 2026.xlsx
         filename_download = f"[Nilai] {nama_matkul}_{combo_tgl_versi}_{jenis_ujian}_{tgl_indo}.xlsx"
         
         st.success(f"✅ Data berhasil diproses untuk **{nama_matkul} - {jenis_ujian}**!")
@@ -319,61 +327,95 @@ if menu_option == "📊 Olah Nilai":
 # ==============================================================================
 elif menu_option == "⚡ Generate Soal":
     st.title("⚡ Generate Import Soal CBT")
-    st.write("Unggah file Excel berisi sheet **`Info`** (Baris B1:B4) dan sheet **`Soal`** (Kolom A s.d I) untuk dikonversi menjadi format import CBT (23 Kolom).")
     
-    file_soal = st.file_uploader("Upload File Spreadsheet Input Soal (.xlsx)", type=["xlsx"], key="gen_soal")
+    # 1. INFORMASI UJIAN (Pindah ke Interface UI)
+    st.subheader("1. Informasi Ujian")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        matkul_gen = st.selectbox(
+            "Mata Kuliah", 
+            ["FBS1", "FBS2", "FBS3", "FBS4", "DMS", "HIS"], 
+            index=0
+        )
+        jenis_gen = st.selectbox(
+            "Jenis Ujian", 
+            ["Post Test", "Pre Test", "Remedial Post Test", "UTS", "UAS", "Remedial"], 
+            index=0
+        )
+        kode_gen = MAP_KODE_UJIAN.get(jenis_gen, "PO")
+        st.caption(f"Kode Ujian Otomatis: **{kode_gen}**")
+
+    with col2:
+        tgl_gen_input = st.date_input("Tanggal Ujian", value=datetime.date.today())
+        # Format YYMMDD (misal 2026-09-16 -> 260916)
+        tgl_gen_yymmdd = tgl_gen_input.strftime("%y%m%d")
+        st.caption(f"Format ID Tanggal: **{tgl_gen_yymmdd}**")
+
+    with col3:
+        versi_gen = st.selectbox("Versi Soal", ["1", "2", "3", "4", "5"], index=0)
+
+    st.divider()
+
+    # 2. UNGGAH FILE SOAL
+    st.subheader("2. Unggah File Soal")
+    st.caption("Unggah file Excel (hanya 1 sheet) dengan kolom: `No.Soal`, `Vignette/Clinical Scenario`, `Pertanyaan`, `Media`, `Opsi Benar`, `Opsi Salah 1`, `Opsi Salah 2`, `Opsi Salah 3`, `Opsi Salah 4`")
+    
+    file_soal = st.file_uploader("Upload File Excel Soal (.xlsx)", type=["xlsx"], key="gen_soal")
     
     if file_soal:
         try:
-            excel_file = pd.ExcelFile(file_soal)
-            
-            if 'Info' not in excel_file.sheet_names or 'Soal' not in excel_file.sheet_names:
-                st.error("❌ Error: File harus memiliki sheet bernama **'Info'** dan **'Soal'**!")
-                st.stop()
-                
-            df_info = pd.read_excel(excel_file, sheet_name='Info', header=None)
-            matkul_gen = str(df_info.iloc[0, 1] if len(df_info) > 0 else '').strip()
-            kode_gen = str(df_info.iloc[1, 1] if len(df_info) > 1 else '').strip()
-            
-            raw_tgl_gen = df_info.iloc[2, 1] if len(df_info) > 2 else ''
-            if isinstance(raw_tgl_gen, (pd.Timestamp, datetime.date, datetime.datetime)):
-                tgl_gen_str = raw_tgl_gen.strftime("%Y%m%d")
-            else:
-                tgl_gen_str = str(raw_tgl_gen).strip()
-                
-            versi_gen = str(df_info.iloc[3, 1] if len(df_info) > 3 else '').strip()
-            
-            df_soal = pd.read_excel(excel_file, sheet_name='Soal')
+            # Read sheet pertama tanpa mempedulikan nama sheet
+            df_soal = pd.read_excel(file_soal, sheet_name=0)
             
             if df_soal.empty:
-                st.warning("⚠️ Tidak ada baris soal yang ditemukan di sheet 'Soal'.")
+                st.warning("⚠️ File Excel soal tidak berisi data.")
                 st.stop()
                 
+            # Standardisasi nama kolom (Lower & Strip)
+            df_soal.columns = [str(c).strip() for c in df_soal.columns]
+            
             output_rows = []
             
             for idx, row in df_soal.iterrows():
-                no_soal_raw = str(row.iloc[0] if len(row) > 0 and pd.notna(row.iloc[0]) else (idx + 1)).strip()
+                # Fungsi pembacaan kolom fleksibel
+                def get_val(possible_headers):
+                    for h in possible_headers:
+                        for col in df_soal.columns:
+                            if col.lower().strip() == h.lower().strip():
+                                val = row[col]
+                                if pd.notna(val):
+                                    return str(val).strip()
+                    return ""
+
+                no_soal_raw = get_val(["No.Soal", "No Soal", "No", "Nomor"])
+                if not no_soal_raw:
+                    no_soal_raw = str(idx + 1)
                 if no_soal_raw.endswith('.0'):
                     no_soal_raw = no_soal_raw[:-2]
                     
-                raw_vignette = str(row.iloc[1] if len(row) > 1 and pd.notna(row.iloc[1]) else '').strip()
-                pertanyaan = str(row.iloc[2] if len(row) > 2 and pd.notna(row.iloc[2]) else '').strip()
-                media = str(row.iloc[3] if len(row) > 3 and pd.notna(row.iloc[3]) else '').strip().lower()
-                opsi_benar = row.iloc[4] if len(row) > 4 and pd.notna(row.iloc[4]) else ''
-                opsi_salah1 = row.iloc[5] if len(row) > 5 and pd.notna(row.iloc[5]) else ''
-                opsi_salah2 = row.iloc[6] if len(row) > 6 and pd.notna(row.iloc[6]) else ''
-                opsi_salah3 = row.iloc[7] if len(row) > 7 and pd.notna(row.iloc[7]) else ''
-                opsi_salah4 = row.iloc[8] if len(row) > 8 and pd.notna(row.iloc[8]) else ''
+                raw_vignette = get_val(["Vignette/Clinical Scenario", "Vignette", "Clinical Scenario", "Kasus"])
+                pertanyaan = get_val(["Pertanyaan", "Soal", "Question"])
+                media = get_val(["Media", "Gambar/Audio", "Link Gambar"]).lower()
                 
+                opsi_benar = get_val(["Opsi Benar", "Kunci", "Jawaban Benar"])
+                opsi_salah1 = get_val(["Opsi Salah 1", "Pilihan Salah 1", "Distraktor 1"])
+                opsi_salah2 = get_val(["Opsi Salah 2", "Pilihan Salah 2", "Distraktor 2"])
+                opsi_salah3 = get_val(["Opsi Salah 3", "Pilihan Salah 3", "Distraktor 3"])
+                opsi_salah4 = get_val(["Opsi Salah 4", "Pilihan Salah 4", "Distraktor 4"])
+                
+                # Abaikan jika baris kosong
                 if not no_soal_raw and not raw_vignette and not pertanyaan:
                     continue
                     
                 no_soal_formatted = no_soal_raw.zfill(3)
                 
-                id_base = f"{matkul_gen}-{kode_gen}-{tgl_gen_str}{versi_gen}{no_soal_formatted}"
+                # Formulasi ID Soal Base & Unik (menggunakan YYMMDD)
+                id_base = f"{matkul_gen}-{kode_gen}-{tgl_gen_yymmdd}{versi_gen}{no_soal_formatted}"
                 random_two_digits = str(random.randint(10, 99))
                 id_soal_lengkap = f"{id_base}{random_two_digits}"
                 
+                # Format Badan Soal (HTML)
                 vignette_formatted = f'<span style="font-size: 0.8em; color: #ebebeb;">{id_soal_lengkap}</span><br>{raw_vignette}'
                 
                 if 'gambar' in media:
@@ -423,7 +465,7 @@ elif menu_option == "⚡ Generate Soal":
                 df_gen_output.to_excel(writer, sheet_name='Sheet1', index=False)
             gen_buffer.seek(0)
             
-            filename_gen = f"Import_Soal_{matkul_gen}_{kode_gen}_{tgl_gen_str}{versi_gen}.xlsx"
+            filename_gen = f"Import_Soal_{matkul_gen}_{kode_gen}_{tgl_gen_yymmdd}{versi_gen}.xlsx"
             
             st.success(f"✅ Berhasil mengonversi **{len(output_rows)} soal**!")
             st.download_button(
